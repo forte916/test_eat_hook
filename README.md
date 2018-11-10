@@ -1,2 +1,2 @@
-# test_eat_hook
-A sample of EAT hook
+# EAT hook and IAT hook
+Samples of EAT hook and IAT hook in C.

@@ -61,7 +61,7 @@ int hookEATwithName(const char *modName, const char *targetName, DWORD hookFunc)
 	 WORD*  pOrdinalTable = NULL;
 	DWORD   i = 0;
 	DWORD* pRelativeOffset = 0;
-	DWORD* pExportedAddr = 0;
+	DWORD  exportedAddr = 0;
 	char*  exportedName = NULL;
 
 	hMod = GetModuleHandleA(modName);
@@ -81,16 +81,16 @@ int hookEATwithName(const char *modName, const char *targetName, DWORD hookFunc)
 		//printf("%d: %s\n", i, exportedName);
 		if (_stricmp(targetName, exportedName) == 0) {
 			pRelativeOffset = &pAddressTable[pOrdinalTable[i]];
-			pExportedAddr = (DWORD*) ((DWORD) hMod + *pRelativeOffset);
-			printf("%s: exported: 0x%x, offset: 0x%x, hMod: 0x%x, EAT addr: 0x%x, hookFunc: 0x%x \n",
-					exportedName, pExportedAddr, *pRelativeOffset, hMod, pRelativeOffset, hookFunc);
+			exportedAddr = (DWORD) hMod + *pRelativeOffset;
+			printf("%s: exported: 0x%x, offset: 0x%x, hMod: 0x%x, EAT addr: 0x%x \n",
+					exportedName, exportedAddr, *pRelativeOffset, hMod, pRelativeOffset);
 			break;
 		}
 	}
 
 	if (pRelativeOffset != 0 && hookFunc != NULL) {
 		DWORD newOffset = hookFunc - (DWORD) hMod;
-		printf("%s: relative: 0x%x, oldOffset: 0x%x, newOffset: 0x%x\n", exportedName, pRelativeOffset, *pRelativeOffset, newOffset);
+		printf("%s: relative: 0x%x, oldOffset: 0x%x, newOffset: 0x%x \n", exportedName, pRelativeOffset, *pRelativeOffset, newOffset);
 
 		forceWrite4(pRelativeOffset, newOffset);
 	}
@@ -115,7 +115,7 @@ int hookEATwithAddress(const char *modName, DWORD targetFunc, DWORD hookFunc)
 	 WORD*  pOrdinalTable = NULL;
 	DWORD   i = 0;
 	DWORD* pRelativeOffset = 0;
-	DWORD* pExportedAddr = 0;
+	DWORD  exportedAddr = 0;
 	char*  exportedName = NULL;
 
 	hMod = GetModuleHandleA(modName);
@@ -134,18 +134,18 @@ int hookEATwithAddress(const char *modName, DWORD targetFunc, DWORD hookFunc)
 		exportedName = (char*) ((DWORD) hMod + pNameTable[i]);
 
 		pRelativeOffset = &pAddressTable[pOrdinalTable[i]];
-		pExportedAddr = (DWORD*) ((DWORD) hMod + *pRelativeOffset);
-		if ((DWORD) pExportedAddr == targetFunc) {
+		exportedAddr = (DWORD) hMod + *pRelativeOffset;
+		if (exportedAddr == targetFunc) {
 			//printf("%d: %s\n", i, exportedName);
-			printf("%s: exported: 0x%x, offset: 0x%x, hMod: 0x%x, EAT addr: 0x%x, hookFunc: 0x%x \n",
-					exportedName, pExportedAddr, *pRelativeOffset, hMod, pRelativeOffset, hookFunc);
+			printf("%s: exported: 0x%x, offset: 0x%x, hMod: 0x%x, EAT addr: 0x%x \n",
+					exportedName, exportedAddr, *pRelativeOffset, hMod, pRelativeOffset);
 			break;
 		}
 	}
 
 	if (pRelativeOffset != 0 && hookFunc != NULL) {
 		DWORD newOffset = hookFunc - (DWORD) hMod;
-		printf("%s: relative: 0x%x, oldOffset: 0x%x, newOffset: 0x%x\n", exportedName, pRelativeOffset, *pRelativeOffset, newOffset);
+		printf("%s: relative: 0x%x, oldOffset: 0x%x, newOffset: 0x%x \n", exportedName, pRelativeOffset, *pRelativeOffset, newOffset);
 
 		forceWrite4(pRelativeOffset, newOffset);
 	}
@@ -173,14 +173,14 @@ int main()
 {
 	printf("Hello World.\n");
 
-	printf("%s: direct  : 0x%x\n", "LoadLibraryA", (DWORD) LoadLibraryA);
+	printf("%s: direct  : 0x%x, hookFunc: 0x%x \n", "LoadLibraryA", (DWORD) LoadLibraryA, (DWORD) hook_LoadLibraryA);
 	hookEATwithName("kernel32.dll", "LoadLibraryA", (DWORD) hook_LoadLibraryA);
 	fp_LoadLibraryA fp = (fp_LoadLibraryA) getApiAddress("kernel32.dll", "LoadLibraryA");
 	fp("kernel32.dll");
 
 	LoadLibraryA("user32.dll");
 
-	printf("%s: direct  : 0x%x\n", "PeekMessageA", (DWORD) PeekMessageA);
+	printf("%s: direct  : 0x%x, hookFunc: 0x%x \n", "PeekMessageA", (DWORD) PeekMessageA, (DWORD) hook_PeekMessageA);
 	//hookEATwithName("user32.dll", "PeekMessageA", (DWORD) hook_PeekMessageA);
 	hookEATwithAddress("user32.dll", (DWORD) PeekMessageA, (DWORD) hook_PeekMessageA);
 	fp_PeekMessageA fp2 = (fp_PeekMessageA) getApiAddress("user32.dll", "PeekMessageA");
