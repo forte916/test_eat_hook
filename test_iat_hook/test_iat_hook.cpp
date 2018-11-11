@@ -34,26 +34,30 @@ BOOL WINAPI hook_PeekMessageA(LPMSG lpMsg, HWND hWnd, UINT wMsgFilterMin, UINT w
 /**
  * @brief  Overwrite 4 bytes at destAddr by given newOffset
  * @param  destAddr: An address where overwritten
- * @param  newOffset: A new value
+ * @param  newValue: A new value
  * @return TRUE on success, otherwise FALSE
  */
-int forceWrite4(DWORD* destAddr, DWORD newOffset)
+int forceWrite4(DWORD* destAddr, DWORD newValue)
 {
 	DWORD oldProtect;
-	VirtualProtect(destAddr, sizeof(DWORD), PAGE_READWRITE, &oldProtect);
-	*destAddr = newOffset;
-	VirtualProtect(destAddr, sizeof(DWORD), oldProtect, &oldProtect);
-	return TRUE;
+	if (VirtualProtect(destAddr, sizeof(DWORD), PAGE_READWRITE, &oldProtect)) {
+		*destAddr = newValue;
+		VirtualProtect(destAddr, sizeof(DWORD), oldProtect, &oldProtect);
+		FlushInstructionCache(GetCurrentProcess(), destAddr, sizeof(DWORD));
+		return TRUE;
+	}
+	return FALSE;
 }
 
 /**
  * @brief  Replace target function by hook function by writing IAT.
+ * @param  modName: A module name. If NULL, hook calling process(.exe file)
  * @param  targetName: A function name to be replaced
  * @param  hookFunc: An address of replacement function
  * @param  origFunc: __out An original functions address to be set
  * @return TRUE on success, otherwise FALSE
  */
-int hookIATwithName(const char *targetName, DWORD hookFunc, DWORD* origFunc)
+int hookIATwithName(const char *modName, const char *targetName, DWORD hookFunc, DWORD* origFunc)
 {
 	HMODULE hMod = NULL;
 	ULONG   size = 0;
@@ -64,7 +68,7 @@ int hookIATwithName(const char *targetName, DWORD hookFunc, DWORD* origFunc)
 	DWORD* pImportedAddr = 0;
 	char*  importedName  = NULL;
 
-	hMod = GetModuleHandleA(NULL);
+	hMod = GetModuleHandleA(modName);
 	pImportDesc = (PIMAGE_IMPORT_DESCRIPTOR) ImageDirectoryEntryToData((PVOID) hMod, TRUE, IMAGE_DIRECTORY_ENTRY_IMPORT, &size);
 
 	if (pImportDesc == NULL) {
@@ -120,12 +124,13 @@ install_hook:
 
 /**
  * @brief  Replace target function by hook function by writing IAT.
+ * @param  modName: A module name. If NULL, hook calling process(.exe file)
  * @param  targetFunc: An address of function to be replaced
  * @param  hookFunc: An address of replacement function
  * @param  origFunc: __out An original functions address to be set
  * @return TRUE on success, otherwise FALSE
  */
-int hookIATwithAddress(DWORD targetFunc, DWORD hookFunc, DWORD* origFunc)
+int hookIATwithAddress(const char *modName, DWORD targetFunc, DWORD hookFunc, DWORD* origFunc)
 {
 	HMODULE hMod = NULL;
 	ULONG   size = 0;
@@ -136,7 +141,7 @@ int hookIATwithAddress(DWORD targetFunc, DWORD hookFunc, DWORD* origFunc)
 	DWORD* pImportedAddr = 0;
 	char*  importedName  = NULL;
 
-	hMod = GetModuleHandleA(NULL);
+	hMod = GetModuleHandleA(modName);
 	pImportDesc = (PIMAGE_IMPORT_DESCRIPTOR) ImageDirectoryEntryToData((PVOID) hMod, TRUE, IMAGE_DIRECTORY_ENTRY_IMPORT, &size);
 
 	if (pImportDesc == NULL) {
@@ -153,7 +158,7 @@ int hookIATwithAddress(DWORD targetFunc, DWORD hookFunc, DWORD* origFunc)
 		pAddressTable = (PIMAGE_THUNK_DATA) ((DWORD) hMod + pImportDesc->FirstThunk);
 
 		//Repeat a count of functions
-		while (pNameTable->u1.Function) {
+		while (pAddressTable->u1.Function) {
 			pImportedAddr = &(pAddressTable->u1.Function);
 			//printf("imported: 0x%x, IAT addr: 0x%x, func first4: 0x%x \n", 
 			//		*pImportedAddr, pImportedAddr, *((DWORD *) *pImportedAddr));
@@ -201,15 +206,15 @@ int main()
 
 	//// Hook LoadLibraryA
 	printf("%s: direct  : 0x%x, orig: 0x%x, hookFunc: 0x%x \n", "LoadLibraryA", (DWORD) LoadLibraryA, (DWORD) orig_LoadLibraryA, (DWORD) hook_LoadLibraryA);
-	hookIATwithName("LoadLibraryA", (DWORD) hook_LoadLibraryA, (DWORD *) &orig_LoadLibraryA);
+	hookIATwithName(NULL, "LoadLibraryA", (DWORD) hook_LoadLibraryA, (DWORD *) &orig_LoadLibraryA);
 	printf("%s: direct  : 0x%x, orig: 0x%x, orig first4: 0x%x \n", "LoadLibraryA", (DWORD) LoadLibraryA, (DWORD) orig_LoadLibraryA, *((DWORD *) orig_LoadLibraryA));
 
 	LoadLibraryA("user32.dll");
 
 	//// Hook PeekMessageA
 	printf("%s: direct  : 0x%x, orig: 0x%x, hookFunc: 0x%x \n", "PeekMessageA", (DWORD) PeekMessageA, (DWORD) orig_PeekMessageA, (DWORD) hook_PeekMessageA);
-	//hookIATwithName("PeekMessageA", (DWORD) hook_PeekMessageA, (DWORD *) &orig_PeekMessageA);
-	hookIATwithAddress((DWORD) PeekMessageA, (DWORD) hook_PeekMessageA, (DWORD *) &orig_PeekMessageA);
+	//hookIATwithName(NULL, "PeekMessageA", (DWORD) hook_PeekMessageA, (DWORD *) &orig_PeekMessageA);
+	hookIATwithAddress(NULL, (DWORD) PeekMessageA, (DWORD) hook_PeekMessageA, (DWORD *) &orig_PeekMessageA);
 	printf("%s: direct  : 0x%x, orig: 0x%x, orig first4: 0x%x \n", "PeekMessageA", (DWORD) PeekMessageA, (DWORD) orig_PeekMessageA, *((DWORD *) orig_PeekMessageA));
 
 	PeekMessageA(NULL, NULL, 0, 0, 0);
